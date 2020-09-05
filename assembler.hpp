@@ -8,7 +8,6 @@
 #include <fstream>
 
 #include "auxiliary.hpp"
-using namespace Aux;
 
 class Assembler {
 public:
