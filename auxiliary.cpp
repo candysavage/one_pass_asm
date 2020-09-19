@@ -53,48 +53,21 @@ std::vector<std::string> parserComma(std::string str) {
 	std::stringstream parser(str);
 	std::string intermediate;
 	std::vector<std::string> retVector;
+	str.erase(std::remove(str.begin(), str.end(), ' '), str.end());
 	while (std::getline(parser, intermediate, ',')) {
-		intermediate.erase(
-				std::remove(intermediate.begin(), intermediate.end(), ' '),
-				intermediate.end());
-		retVector.push_back(intermediate);
+		if(intermediate != "")
+			retVector.push_back(intermediate);
 	}
 
 	return retVector;
 }
 
-int16_t toInt16_t(std::string str) {
-	if (str[0] == '0') {
-		if (str[1] == 'b')
-			return (int16_t) stoi(str, nullptr, 2);
-		if (str[1] == 'o')
-			return (int16_t) stoi(str, nullptr, 8);
-		if (str[1] == 'x')
-			return (int16_t) stoi(str, nullptr, 16);
-	}
-	return stoi(str, nullptr, 10);
-}
-
-int8_t toInt8_t(std::string str) {
-	if (str[0] == '*') {
-		str.erase(0, 1);
-	}
-	if (str[0] == '0') {
-		if (str[1] == 'b')
-			return (int8_t) stoi(str, nullptr, 2);
-		if (str[1] == 'o')
-			return (int8_t) stoi(str, nullptr, 8);
-		if (str[1] == 'x')
-			return (int8_t) stoi(str, nullptr, 16);
-	}
-	return stoi(str, nullptr, 10);
-}
-
-bool isJump(std::string i) {
-	if (i == "int" || i == "call" || i == "jmp" || i == "jeq" || i == "jne"
-			|| i == "jgt") {
+bool isJump(std::string instruction) {
+	if (instruction == "int" || instruction == "call" || instruction == "jmp" || instruction == "jeq" || instruction == "jne"
+			|| instruction == "jgt") {
 		return true;
 	}
 
 	return false;
 }
+

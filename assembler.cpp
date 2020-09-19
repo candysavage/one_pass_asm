@@ -1,6 +1,6 @@
 #include <iostream>
 #include <iomanip>
-
+#include <sstream>
 #include "assembler.hpp"
 #include "auxiliary.hpp"
 
@@ -16,8 +16,11 @@ const char *regexes[] ={
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*\\.skip[ 	]+((?:0x)?[0-9a-fA-F]+)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(halt|iret|ret)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(int|call|jmp|jeq|jne|jgt|push|pop)[ 	]+((?:(?:\\*)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:\\*%(?:r[0-7]|pc|sp))|(?:\\*\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$",
-		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)[lh]?\\))),[ 	]*((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)[lh]?\\)))[ 	]*(?:#.*)*$"
+		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\))),[ 	]*((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$"
 };
+
+const char* jumpRegex = "((?:\\*)?(?:0x)?(?:[1-9a-fA-F][0-9a-fA-F]*)(?:\\(%r[0-7]|pc|sp\\))?)|((?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(\\*%(?:r[0-7]|pc|sp))|(\\*\\(%(?:r[0-7]|pc|sp)\\))";
+const char* instrOperandRegex = "((?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)\\))";
 
 Assembler::Assembler() {
 
@@ -27,7 +30,7 @@ Assembler::Assembler() {
 	symbolNumber = 0;
 	locationCounter = 0;
 	foundEnd = false;
-	logFile.open("assemblyLog.txt");
+	logFile.open("assemblyLog.txt", std::ios::out);
 	if (!logFile.good()) {
 		std::cout << "Unable to open log file. Abort.\n" << std::endl;
 		exit(ERR_FOPEN);
@@ -62,27 +65,29 @@ void Assembler::regexInit() {
 	 * (3) *%r0
 	 * (4) *%(r0)
 	 */
-	operandJumpRegex = std::regex("((?:\\*)?(?:0x)?(?:[1-9a-fA-F][0-9a-fA-F]*)(?:\\(%r[0-7]|pc|sp\\))?)|((?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(\\*%(?:r[0-7]|pc|sp))|(\\*\\(%(?:r[0-7]|pc|sp)\\))");
-	operandInstructionRegex = std::regex("((?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)[lh]?\\))");
+	operandJumpRegex = std::regex(jumpRegex);
+	operandInstructionRegex = std::regex(instrOperandRegex);
 }
 
 void Assembler::logger(std::string s) {
 	logFile << s << std::endl;
 }
 
-void Assembler::argumentsAnalyzer(int argc, char **argv) {
+void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 	auto isNextObj = false;
-	for (auto i = 1; i < argc; i++) {
+	for (auto i = 0; i < argc; i++) {
 		if (isNextObj) {
-			objectFile.open(argv[i]);
+			objectFile.open(args[i], std::ios::out);
+			isNextObj = false;
 			if (!objectFile.good()) {
-				logger("Error while trying to open .o file");
+				logger("Error while trying to create obj file");
 				exit(ERR_FOPEN);
 			}
 		} else {
-			switch (argv[i][0]) {
+			auto first = args[i][0];
+			switch (first) {
 			case '-':
-				if (argv[i][1] == 'o') {
+				if (args[i][1] == 'o') {
 					isNextObj = true;
 				} else {
 					logger("Invalid argument after - ");
@@ -90,9 +95,9 @@ void Assembler::argumentsAnalyzer(int argc, char **argv) {
 				}
 				break;
 			default:
-				asmFile.open(argv[i]);
+				asmFile.open(args[i], std::ios::in);
 				if (!asmFile.good()) {
-					logger("Error while trying to open the .s file ");
+					logger("Error while trying to open src file");
 					exit(ERR_FOPEN);
 				}
 				break;
@@ -101,7 +106,14 @@ void Assembler::argumentsAnalyzer(int argc, char **argv) {
 	}
 }
 
+
+template<typename T>
+void Assembler::printElement(T t){
+    objectFile << std::right << std::setw(20) << std::setfill(' ') << t;
+}
+
 void Assembler::generateObj() {
+	readLine = "";
 	while (std::getline(asmFile, readLine)) {
 		++readingLineNumber;
 		validateRegex();
@@ -122,9 +134,9 @@ void Assembler::generateObj() {
 			auto operation = entry.action;
 			auto offset = entry.offset;
 			auto section = entry.sectionNumber;
-			auto vect = machineCode[section];
+			auto& vect = machineCode[section];
 			if(checkSymbolIsLiteral(symbol)) {
-				auto literal = literalTable[symbol];
+				auto& literal = literalTable[symbol];
 				if(entry.size == 1) {
 					vect[offset] += (operation == ADD) ? literal.value : 0 - literal.value;
 					if(literal.relocations.size() != 0) {
@@ -146,7 +158,7 @@ void Assembler::generateObj() {
 				}
 			} else {
 				if(checkSymbolExists(symbol)) {
-					auto sym = symbolTable[symbol];
+					auto& sym = symbolTable[symbol];
 					if(checkSymbolIsExtern(symbol) || checkSymbolIsGlobal(symbol)) {
 						relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.number});
 					} else {
@@ -156,7 +168,7 @@ void Assembler::generateObj() {
 							immed.byte2 = vect[offset+1];
 							immed.val += (operation == ADD) ? sym.offset : 0 - sym.offset;
 							vect[offset] = immed.byte1;
-							vect[offset] = immed.byte2;
+							vect[offset+1] = immed.byte2;
 							relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.sectionNumber});
 						} else {
 							std::stringstream log;
@@ -177,17 +189,63 @@ void Assembler::generateObj() {
 
 	// tabela simbola
 	objectFile << "%SYMBOL TABLE%" << std::endl;
-	objectFile << "Symbol\t\tSymbol number\t\tSection\t\tOffset\t\tType\t\tSize\t\tSymbolType" << std::endl;
+	printElement("Symbol");
+	printElement("Symbol number");
+	printElement("Section");
+	printElement("Offset");
+	printElement("Type");
+	printElement("Size");
+	printElement("SymbolType");
+	objectFile << std::endl;
 	for(auto symbol : symbolTable) {
-		objectFile << symbol.first <<"\t"<<(int)symbol.second.number<<"\t"<<sectionTranslation[symbol.second.sectionNumber]<<"\t"<<symbol.second.offset<<"\t"<<symbol.second.type<<"\t"<<(int)symbol.second.size<<"\t"<<symbol.second.symbolType<<std::endl;
+		printElement(symbol.first);
+		printElement((int)symbol.second.number);
+		printElement(sectionTranslation[symbol.second.sectionNumber]);
+		printElement(symbol.second.offset);
+		printElement(symbol.second.type);
+		printElement((int)symbol.second.size);
+		printElement(symbol.second.symbolType);
+		objectFile << std::endl;
 	}
 	objectFile << std::endl;
+
+	// tabela equ literala
+	objectFile << "%EQU SYMBOLS%" << std::endl;
+	printElement("Symbol");
+	printElement("Value");
+	printElement("Relocations");
+	objectFile << std::endl;
+	for(auto literal : literalTable) {
+		printElement(literal.first);
+		printElement((int)literal.second.value);
+		std::stringstream ss;
+		for(auto relocs : literal.second.relocations) {
+			ss << relocs.op;
+			ss << (int)relocs.symbolNumber;
+			ss << ' ';
+		}
+		printElement(ss.str());
+		objectFile << std::endl;
+	}
+
+	objectFile << std::endl;
+
 	// tabele relokacija po sekciji
 	for(auto it : relocationTable) {
-		objectFile << "%RELOCATION TABLE% - section " << it.first << std::endl;
-		objectFile << "Symbol number\t\tOffset\t\tOperation\t\tRelocation type" << std::endl;
+		printElement("%RELOCATION TABLE% - section ");
+		printElement(it.first);
+		objectFile << std::endl;
+		printElement("Symbol number");
+		printElement("Offset");
+		printElement("Operation");
+		printElement("Relocation type");
+		objectFile << std::endl;
 		for(auto reloc : it.second) {
-			objectFile << (int)reloc.value << "\t" << reloc.offset << "\r" << reloc.op << "\t" << reloc.type << std::endl;
+			printElement((int)reloc.value);
+			printElement(reloc.offset);
+			printElement(reloc.op);
+			printElement(reloc.type);
+			objectFile << std::endl;
 		}
 	objectFile << std::endl;
 	}
@@ -195,10 +253,20 @@ void Assembler::generateObj() {
 
 	// masinski kod po sekcijama
 	for (auto it : sectionTable) {
+		if(it.first == "UNDEFINED") {
+			continue;
+		}
 		objectFile << "." <<it.first<<"\t"<<it.second.sectionSize<<std::endl;
+		auto breaker = 0;
 		for(auto i : machineCode[it.second.number]) {
 			objectFile<<std::setfill('0')<<std::hex<<std::setw(2)<<(unsigned)i<<" ";
+			++breaker;
+			if(breaker%16 == 0){
+				objectFile << std::endl;
+			}
 		}
+		objectFile << std::endl;
+		objectFile << std::endl;
 	}
 
 }
@@ -227,14 +295,14 @@ bool Assembler::checkSymbolIsDefined(std::string label) {
 }
 
 void Assembler::defineLabel(std::string label) {
-	symbolTableEntry symbol = symbolTable.at(label);
+	auto& symbol = symbolTable[label];
 	symbol.sectionNumber = currentSectionSymbolNumber;
 	symbol.offset = locationCounter;
 	symbol.size = 0;
-	symbol.symbolType = "label";
 	if (symbol.type != "global") {
 		symbol.type = "local";
 	}
+	symbol.symbolType = "label";
 }
 
 void Assembler::addUndefinedSymbol(std::string symbol) {
@@ -267,7 +335,11 @@ void Assembler::addGlobal(std::string expression) {
 			exit(ERR_REDEFINITION);
 		}
 		if (checkSymbolExists(symbol)) {
-			symbolTable.at(symbol).type = "global";
+			if(checkSymbolIsExtern(symbol)) {
+				logger("Symbol cannot be extern and global, at line " + readingLineNumber);
+				exit(ERR_UNDEFINED_SYMBOL);
+			}
+			symbolTable[symbol].type = "global";
 		} else {
 			++symbolNumber;
 			symbolTable.insert( { symbol, { symbolNumber, UNDEFINED_SECTION, 0,
@@ -285,9 +357,7 @@ void Assembler::addExtern(std::string expression) {
 			exit(ERR_REDEFINITION);
 		}
 		if (checkSymbolExists(symbol)) {
-			logger(
-					"Symbol declared extern already exists in symbol table, error in line "
-							+ readingLineNumber);
+			logger("Symbol declared extern already exists in symbol table, error in line " + readingLineNumber);
 			exit(ERR_MULTIPLE_DEFINITIONS);
 		}
 		++symbolNumber;
@@ -306,8 +376,7 @@ void Assembler::resolveSymbol(std::string symbol) {
 	}
 	if (checkSymbolExists(symbol)) {
 		if (checkSymbolIsDefined(symbol) || checkSymbolIsExtern(symbol)) {
-			logger(
-					"Multiple definitions | is extern, symbol at line " + readingLineNumber);
+			logger("Multiple definitions or symbol is extern, symbol at line " + readingLineNumber);
 			exit(ERR_MULTIPLE_DEFINITIONS);
 		} else {
 			defineLabel(symbol);
@@ -318,7 +387,7 @@ void Assembler::resolveSymbol(std::string symbol) {
 }
 
 void Assembler::calculateExpression(std::string lit, char operation, std::string operand) {
-	auto literal = literalTable[lit];
+	auto& literal = literalTable[lit];
 	if (operand[0] >= '0' && operand[0] <= '9') {
 		 literal.value += (operation == ADD) ? toInt16_t(operand) : 0 - toInt16_t(operand);
 	} else {
@@ -347,7 +416,7 @@ void Assembler::calculateExpression(std::string lit, char operation, std::string
 
 
 void Assembler::calculateLiteral(std::string literal) {
-	auto literalEntry = literalTable[literal];
+	auto& literalEntry = literalTable[literal];
 	auto expression = literalEntry.expression;
 	expression.erase(std::remove(expression.begin(), expression.end(),' '), expression.end());
 	char operation = ADD;
@@ -380,6 +449,54 @@ void Assembler::calculateLiteral(std::string literal) {
 			}
 		}
 	}
+}
+
+
+int16_t Assembler::toInt16_t(std::string str) {
+	int val = 0;
+	if(str[0] == '*') {
+		str.erase(0, 1);
+	}
+	if (str[0] == '0') {
+		if (str[1] == 'b')
+			val = stoi(str, nullptr, 2);
+		if (str[1] == 'o')
+			val = stoi(str, nullptr, 8);
+		if (str[1] == 'x')
+			val = stoi(str, nullptr, 16);
+	} else {
+		val = stoi(str, nullptr);
+	}
+
+	if(val > 65535) {
+		logger("Too large value used in word directive at line " + readingLineNumber);
+		exit(ERR_ARGUMENT);
+	}
+	return (int16_t) val;
+}
+
+int8_t Assembler::toInt8_t(std::string str) {
+	int val = 0;
+	if(str[0] == '*') {
+		str.erase(0, 1);
+	}
+	if (str[0] == '0') {
+		if (str[1] == 'b')
+			val = stoi(str, nullptr, 2);
+		if (str[1] == 'o')
+			val = stoi(str, nullptr, 8);
+		if (str[1] == 'x')
+			val = stoi(str, nullptr, 16);
+	} else {
+		val = stoi(str, nullptr);
+	}
+
+	if(val > 255) {
+		logger("Too large value used in byte directive at line " + readingLineNumber);
+		exit(ERR_ARGUMENT);
+	}
+
+	return (int8_t)val;
 }
 
 void Assembler::validateRegex() {
@@ -444,8 +561,8 @@ void Assembler::decypherRegex(int i) {
 	{
 		auto section = get(SECTION);
 		if (currentSection != "UNDEFINED") {
-			symbolTable.at(currentSection).size = locationCounter;
-			sectionTable.at(currentSection).sectionSize = locationCounter;
+			symbolTable[currentSection].size = locationCounter;
+			sectionTable[currentSection].sectionSize = locationCounter;
 		}
 
 		locationCounter = 0;
@@ -464,17 +581,17 @@ void Assembler::decypherRegex(int i) {
 				logger("Multiple definitions of section at line " + readingLineNumber);
 				exit(ERR_MULTIPLE_DEFINITIONS);
 			}
-			auto symbol = symbolTable.at(section);
+			auto& symbol = symbolTable.at(section);
 			symbol.sectionNumber = symbol.number;
 			symbol.offset = 0;
-			symbol.type = "global";
+			symbol.type = "local";
 			symbol.symbolType = "section";
 			sectionTable.insert( { section, { 0, symbol.number } });
 			sectionTranslation.insert({symbol.number, section});
 			currentSectionSymbolNumber = symbol.number;
 		} else {
 			++symbolNumber;
-			symbolTable.insert( { section, { symbolNumber, symbolNumber, locationCounter, "global", 0, "section" } });
+			symbolTable.insert( { section, { symbolNumber, symbolNumber, locationCounter, "local", 0, "section" } });
 			sectionTable.insert( { section, { 0, symbolNumber } });
 			sectionTranslation.insert( {symbolNumber, section});
 			currentSectionSymbolNumber = symbolNumber;
@@ -534,6 +651,10 @@ void Assembler::decypherRegex(int i) {
 			}
 			if (sym[0] >= '0' && sym[0] <= '9') {
 				value = toInt8_t(sym);
+				if(operation == '-' && value == INT8_T_MIN) {
+					logger("Overflow value at byte directive, line number " + readingLineNumber);
+					exit(ERR_ARGUMENT);
+				}
 				value = (operation == '+') ? value : 0 - value;
 			} else {
 				if (literalTable.find(sym) != literalTable.end()) {
@@ -565,6 +686,10 @@ void Assembler::decypherRegex(int i) {
 			}
 			if (sym[0] >= '0' && sym[0] <= '9') {
 				value = toInt16_t(sym);
+				if(operation == '-' && value == INT16_T_MIN) {
+					logger("Overflow value at word directive, line number " + readingLineNumber);
+					exit(ERR_ARGUMENT);
+				}
 				value = (operation == ADD) ? value : 0 - value;
 			} else {
 				value = autoRelocation(sym, operation, R_16);
@@ -588,6 +713,9 @@ void Assembler::decypherRegex(int i) {
 		if (value < 0) {
 			logger("Negative value in skip at line " + readingLineNumber);
 			exit(ERR_SYNTAX);
+		}
+		for(auto i = 0; i < value; i++) {
+		machineCode[currentSectionSymbolNumber].push_back(0x90);
 		}
 		locationCounter += value;
 	}
@@ -616,8 +744,6 @@ void Assembler::decypherRegex(int i) {
 		auto instruction = get(OPERATION);
 		resolveSymbol(symbol);
 		auto argument1 = get(ARG1);
-		std::smatch operand;
-		std::regex_search(argument1, operand, operandJumpRegex);
 
 		union Mnemonics mnemonic;
 		mnemonic.val = 0;
@@ -630,111 +756,249 @@ void Assembler::decypherRegex(int i) {
 		union ImmedValues oper;
 		oper.val = 0;
 
+		std::string addrMode = "";
+
+		std::smatch operand;
+
 		/*
 		 * (1) *0xff(%r0), *0xff, 0xff
 		 * (2) *labela1(%r0), *labela2, labela3
 		 * (3) *%r0
 		 * (4) *%(r0)
 		 */
-		for (int i = 1; i < 5; i++) {
-			if (operand.str(i) != "") {
-				std::string jumpAddr = operand.str(i);
-				switch (i) {
 
-				// *0xff(%r0), *0xff, 0xff
+		if (isJump(instruction)) {
+			std::regex_search(argument1, operand, operandJumpRegex);
+			for (int i = 1; i < 5; i++) {
+				if (operand.str(i) != "") {
+					std::string jumpAddr = operand.str(i);
+					switch (i) {
 
-				case 1:
-					if (jumpAddr[0] == '*') {
-						jumpAddr.erase(0, 1);
-						auto position = jumpAddr.find("(", 0);
-						if (position == std::string::npos) {
-							addr.addressMode = MAPS::addressingMode[MEMDIR];
+					// *0xff(%r0), *0xff, 0xff
+					case 1:
+						if (jumpAddr[0] == '*') {
+							jumpAddr.erase(0, 1);
+							auto position = jumpAddr.find("(", 0);
+							if (position == std::string::npos) {
+								addrMode = MEMDIR;
+								addr.addressMode = MAPS::addressingMode[MEMDIR];
+								locationCounter++;
+								oper.val = toInt16_t(jumpAddr);
+								locationCounter += 2;
+							} else {
+								auto operand1literal = jumpAddr.substr(0, position);
+								jumpAddr.erase(0, operand1literal.length() + 2);
+								jumpAddr.erase(jumpAddr.length() - 1, 1);
+								auto operand1reg = jumpAddr;
+								addrMode = REGIND16B;
+								addr.addressMode = MAPS::addressingMode[REGIND16B];
+								addr.regs = MAPS::regs[operand1reg];
+								locationCounter++;
+								oper.val = toInt16_t(operand1literal);
+								locationCounter += 2;
+							}
+						} else {
+							addrMode = IMMED;
+							addr.addressMode = MAPS::addressingMode[IMMED];
 							locationCounter++;
 							oper.val = toInt16_t(jumpAddr);
 							locationCounter += 2;
-						} else {
-							auto operand1literal = jumpAddr.substr(0, position);
-							jumpAddr.erase(0, operand1literal.length() + 2);
-							jumpAddr.erase(jumpAddr.length() - 1, 1);
-							auto operand1reg = jumpAddr;
-							addr.addressMode = MAPS::addressingMode[REGIND16B];
-							addr.regs = MAPS::regs[operand1reg];
-							locationCounter++;
-							oper.val = toInt16_t(operand1literal);
-							locationCounter += 2;
 						}
-					} else {
-						addr.addressMode = MAPS::addressingMode[IMMED];
-						locationCounter++;
-						oper.val = toInt16_t(jumpAddr);
-						locationCounter += 2;
-					}
-					machineCode[currentSectionSymbolNumber].push_back(addr.val);
-					machineCode[currentSectionSymbolNumber].push_back(oper.byte1);
-					machineCode[currentSectionSymbolNumber].push_back(oper.byte2);
-					break;
+						machineCode[currentSectionSymbolNumber].push_back(addr.val);
+						machineCode[currentSectionSymbolNumber].push_back(oper.byte1);
+						machineCode[currentSectionSymbolNumber].push_back(oper.byte2);
+						break;
 
-
-				// *labela1(%r0), *labela2, labela3
-				case 2:
-					if (jumpAddr[0] == '*') {
-						jumpAddr.erase(0, 1);
-						auto position = jumpAddr.find('(', 0);
-						if (position == std::string::npos) {
-							addr.addressMode = MAPS::addressingMode[MEMDIR];
+					// *labela1(%r0), *labela2, labela3
+					case 2:
+						if (jumpAddr[0] == '*') {
+							jumpAddr.erase(0, 1);
+							auto position = jumpAddr.find('(', 0);
+							if (position == std::string::npos) {
+								addrMode = MEMDIR;
+								addr.addressMode = MAPS::addressingMode[MEMDIR];
+								locationCounter++;
+								oper.val = autoRelocation(jumpAddr, ADD, R_16);
+								locationCounter += 2;
+							} else {
+								auto operand1label = jumpAddr.substr(0, position);
+								jumpAddr.erase(0, operand1label.length() + 2);
+								jumpAddr.erase(jumpAddr.length() - 1, 1);
+								auto operand1reg = jumpAddr;
+								addrMode = REGIND16B;
+								addr.addressMode = MAPS::addressingMode[REGIND16B];
+								addr.regs = MAPS::regs[operand1reg];
+								locationCounter++;
+								if (operand1reg == "pc" || operand1reg == "r7") {
+									if (checkSymbolIsLiteral(operand1label)) {
+										oper.val = autoRelocation(operand1label, ADD, R_16);
+									} else {
+										oper.val = -2;
+										oper.val = oper.val + autoRelocation(operand1label, ADD, R_PC16);
+									}
+									locationCounter += 2;
+								} else {
+									oper.val = autoRelocation(operand1label, ADD, R_16);
+									locationCounter += 2;
+								}
+							}
+						} else {
+							addrMode = IMMED;
+							addr.addressMode = MAPS::addressingMode[IMMED];
 							locationCounter++;
 							oper.val = autoRelocation(jumpAddr, ADD, R_16);
 							locationCounter += 2;
-						} else {
-							auto operand1label = jumpAddr.substr(0, position);
-							jumpAddr.erase(0, operand1label.length() + 2);
-							jumpAddr.erase(jumpAddr.length() - 1, 1);
-							auto operand1reg = jumpAddr;
-							addr.addressMode = MAPS::addressingMode[REGIND16B];
-							addr.regs = MAPS::regs[operand1reg];
+						}
+						machineCode[currentSectionSymbolNumber].push_back(addr.val);
+						machineCode[currentSectionSymbolNumber].push_back(oper.byte1);
+						machineCode[currentSectionSymbolNumber].push_back(oper.byte2);
+						break;
+
+					// *%r0
+					case 3:
+						jumpAddr.erase(0, 2);
+						addrMode = REGDIR;
+						addr.addressMode = MAPS::addressingMode[REGDIR];
+						addr.regs = MAPS::regs[jumpAddr];
+						locationCounter++;
+						machineCode[currentSectionSymbolNumber].push_back(addr.val);
+						break;
+
+					// *%(r0)
+					case 4:
+						jumpAddr.erase(0, 3);
+						jumpAddr.erase(jumpAddr.length() - 1, 1);
+						addrMode = REGIND;
+						addr.addressMode = MAPS::addressingMode[REGIND];
+						addr.regs = MAPS::regs[jumpAddr];
+						locationCounter++;
+						machineCode[currentSectionSymbolNumber].push_back(addr.val);
+						break;
+					}
+					break;
+				}
+			}
+
+		} else {	// push pop
+			std::regex_search(argument1, operand, operandInstructionRegex);
+			for (int i = 1; i < 5; i++) {
+				if (operand.str(i) != "") {
+					std::string operand1 = operand.str(i);
+					switch(i) {
+					// 0xff(%r0), $0xff, 0xff
+					case 1:
+						if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
+							logger("Bad operand format, $literal(%r<num) at line " + readingLineNumber);
+							exit(ERR_ARGUMENT);
+						}
+						if(operand1[0] == '$') {
+							operand1.erase(0, 1);
+							addrMode = IMMED;
+							addr.addressMode = MAPS::addressingMode[IMMED];
 							locationCounter++;
-							if (operand1reg == "pc" || operand1reg == "r7") {
-								if (checkSymbolIsLiteral(operand1label)) {
-									oper.val = autoRelocation(operand1label, ADD, R_16);
-								} else {
-									oper.val = -2;
-									oper.val = oper.val + autoRelocation(operand1label, ADD, R_PC16);
-								}
-								locationCounter += 2;
+							oper.val = toInt16_t(operand1);
+							locationCounter += 2;
+						} else {
+							auto position = operand1.find('(',0);
+							if(position == std::string::npos) {
+								addrMode = MEMDIR;
+								addr.addressMode = MAPS::addressingMode[MEMDIR];
+								locationCounter++;
+								oper.val = toInt16_t(operand1);
+								locationCounter+= 2;
 							} else {
-								oper.val = autoRelocation(operand1label, ADD, R_16);
+								auto operand1Literal = operand1.substr(0, position);
+								operand1.erase(0, operand1Literal.length() + 2);
+								operand1.erase(operand1.length() - 1, 1);
+								auto operand1Reg = operand1;
+								addrMode = REGIND16B;
+								addr.addressMode = MAPS::addressingMode[REGIND16B];
+								addr.regs = MAPS::regs[operand1Reg];
+								locationCounter++;
+								oper.val = toInt16_t(operand1Literal);
 								locationCounter += 2;
 							}
 						}
-					} else {
-						addr.addressMode = MAPS::addressingMode[IMMED];
+						break;
+
+					// labela1(%r0), $labela2, labela3
+					case 2:
+						if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
+							logger("Bad operand format, $symbol(%r<num) at line " + readingLineNumber);
+							exit(ERR_ARGUMENT);
+						}
+						if(operand1[0] == '$') {
+							operand1.erase(0, 1);
+							addrMode = IMMED;
+							addr.addressMode = MAPS::addressingMode[IMMED];
+							locationCounter++;
+							oper.val = autoRelocation(operand1, ADD, R_16);
+							locationCounter += 2;
+						} else {
+							auto position = operand1.find('(',0);
+							if(position == std::string::npos) {
+								addrMode = MEMDIR;
+								addr.addressMode = MAPS::addressingMode[MEMDIR];
+								locationCounter++;
+								oper.val = autoRelocation(operand1, ADD, R_16);
+								locationCounter += 2;
+							} else {
+								auto operand1Label = operand1.substr(0, position);
+								operand1.erase(0, operand1Label.length() + 2);
+								operand1.erase(operand1.length() - 1, 1);
+								auto operand1Reg = operand1;
+								addrMode = REGIND16B;
+								addr.addressMode = MAPS::addressingMode[REGIND16B];
+								addr.regs = MAPS::regs[operand1Reg];
+								locationCounter++;
+								if(operand1Reg == "pc" || operand1Reg == "r7") {
+									if(checkSymbolIsLiteral(operand1Label)) {
+										oper.val = autoRelocation(operand1Label, ADD, LITERAL);
+									} else {
+										oper.val = -2;
+										oper.val = oper.val + autoRelocation(operand1Label, ADD, R_PC16);
+									}
+								} else {
+									oper.val = autoRelocation(operand1Label, ADD, R_16);
+								}
+								locationCounter += 2;
+							}
+						}
+						break;
+
+					// %r0
+					case 3:
+						operand1.erase(0, 1);
+						addrMode = REGDIR;
+						addr.addressMode = MAPS::addressingMode[REGDIR];
+						addr.regs = MAPS::regs[operand1];
 						locationCounter++;
-						oper.val = autoRelocation(jumpAddr, ADD, R_16);
-						locationCounter += 2;
+						break;
+
+					// %(r0)
+					case 4:
+						operand1.erase(0, 2);
+						operand1.erase(operand1.length() - 1, 1);
+						addrMode = REGIND;
+						addr.addressMode = MAPS::addressingMode[REGIND];
+						addr.regs = MAPS::regs[operand1];
+						locationCounter++;
+						break;
 					}
-					machineCode[currentSectionSymbolNumber].push_back(addr.val);
-					machineCode[currentSectionSymbolNumber].push_back(oper.byte1);
-					machineCode[currentSectionSymbolNumber].push_back(oper.byte2);
-					break;
-
-				// *%r0
-				case 3:
-					jumpAddr.erase(0, 2);
-					addr.addressMode = MAPS::addressingMode[REGDIR];
-					addr.regs = MAPS::regs[jumpAddr];
-					machineCode[currentSectionSymbolNumber].push_back(addr.val);
-					break;
-
-				// *%(r0)
-				case 4:
-					jumpAddr.erase(0, 3);
-					jumpAddr.erase(jumpAddr.length() - 1, 1);
-					addr.addressMode = MAPS::addressingMode[REGIND];
-					addr.regs = MAPS::regs[jumpAddr];
-					machineCode[currentSectionSymbolNumber].push_back(addr.val);
 					break;
 				}
-				break;
+			}
+
+			if(instruction == "pop" && addrMode == IMMED) {
+				logger("Pop + immed illegal combination, line number " + readingLineNumber);
+				exit(ERR_ARGUMENT);
+			}
+
+			machineCode[currentSectionSymbolNumber].push_back(addr.val);
+
+			if(addrMode == IMMED || addrMode == REGIND16B || addrMode == MEMDIR) {
+				machineCode[currentSectionSymbolNumber].push_back(oper.byte1);
+				machineCode[currentSectionSymbolNumber].push_back(oper.byte2);
 			}
 		}
 	}
@@ -749,8 +1013,8 @@ void Assembler::decypherRegex(int i) {
 		auto argument1 = get(ARG1);
 		auto argument2 = get(ARG2);
 		std::smatch operand;
-		std::regex_search(argument1, operand, operandInstructionRegex);
 		bool isPcRel = false;
+		std::regex_search(argument1, operand, operandInstructionRegex);
 		union Mnemonics mnemonic;
 		mnemonic.val = 0;
 		mnemonic.opcode = MAPS::opCode[instruction];
@@ -759,7 +1023,9 @@ void Assembler::decypherRegex(int i) {
 		machineCode[currentSectionSymbolNumber].push_back(mnemonic.val);
 		locationCounter++;
 
+		// **************************************************
 		// Operand 1
+		// **************************************************
 
 		union Addressing addr1;
 		addr1.val = 0;
@@ -768,8 +1034,8 @@ void Assembler::decypherRegex(int i) {
 		std::string addr1Mode = "";
 
 		/*
-		 * (1) $0xff(%r0), $0xff, 0xff
-		 * (2) $labela1(%r0), $labela2, labela3
+		 * (1) 0xff(%r0), $0xff, 0xff
+		 * (2) labela1(%r0), $labela2, labela3
 		 * (3) %r0
 		 * (4) %(r0)
 		 */
@@ -777,10 +1043,20 @@ void Assembler::decypherRegex(int i) {
 			if (operand.str(i) != "") {
 				std::string operand1 = operand.str(i);
 				switch(i) {
-				// $0xff(%r0), $0xff, 0xff
+				// 0xff(%r0), $0xff, 0xff
 				case 1:
+					if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
+						logger("Bad operand format, $literal(%r<num) at line " + readingLineNumber);
+						exit(ERR_ARGUMENT);
+					}
 					if(operand1[0] == '$') {
-						operand1.erase(0,1);
+						operand1.erase(0, 1);
+						addr1Mode = IMMED;
+						addr1.addressMode = MAPS::addressingMode[IMMED];
+						locationCounter++;
+						oper1.val = toInt16_t(operand1);
+						locationCounter += 2;
+					} else {
 						auto position = operand1.find('(',0);
 						if(position == std::string::npos) {
 							addr1Mode = MEMDIR;
@@ -800,18 +1076,24 @@ void Assembler::decypherRegex(int i) {
 							oper1.val = toInt16_t(operand1Literal);
 							locationCounter += 2;
 						}
-					} else {
-						logger("Dst operand immed at line " + readingLineNumber);
-						exit(ERR_INVALID_OPERAND);
 					}
-
 					break;
 
-				// $labela1(%r0), $labela2, labela3
+				// labela1(%r0), $labela2, labela3
 				case 2:
+					if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
+						logger("Bad operand format, $symbol(%r<num>) at line " + readingLineNumber);
+						exit(ERR_ARGUMENT);
+					}
 					if(operand1[0] == '$') {
-						operand1.erase(0,1);
-						auto position = operand1.find('(', 0);
+						operand1.erase(0, 1);
+						addr1Mode = IMMED;
+						addr1.addressMode = MAPS::addressingMode[IMMED];
+						locationCounter++;
+						oper1.val = autoRelocation(operand1, ADD, R_16);
+						locationCounter += 2;
+					} else {
+						auto position = operand1.find('(',0);
 						if(position == std::string::npos) {
 							addr1Mode = MEMDIR;
 							addr1.addressMode = MAPS::addressingMode[MEMDIR];
@@ -839,10 +1121,6 @@ void Assembler::decypherRegex(int i) {
 							}
 							locationCounter += 2;
 						}
-					} else {
-						// IMMED za destinacioni operand osim ako je shr??
-						logger("Immed as dst operand at line " + readingLineNumber);
-						exit(ERR_INVALID_OPERAND);
 					}
 					break;
 
@@ -855,6 +1133,7 @@ void Assembler::decypherRegex(int i) {
 					if(operandSize == 0) {
 						addr1.part = (operand1[operand1.length() - 1] == 'l') ? 0 : 1;
 					}
+					locationCounter++;
 					break;
 
 				// %(r0)
@@ -864,12 +1143,16 @@ void Assembler::decypherRegex(int i) {
 					addr1Mode = REGIND;
 					addr1.addressMode = MAPS::addressingMode[REGIND];
 					addr1.regs = MAPS::regs[operand1];
+					locationCounter++;
 					break;
 				}
+				break;
 			}
 		}
 
+		// **************************************************
 		// Operand 2
+		// **************************************************
 
 		std::regex_search(argument2, operand, operandInstructionRegex);
 
@@ -880,8 +1163,8 @@ void Assembler::decypherRegex(int i) {
 		std::string addr2Mode = "";
 
 		/*
-		 * (1) $0xff(%r0), $0xff, 0xff
-		 * (2) $labela1(%r0), $labela2, labela3
+		 * (1) 0xff(%r0), $0xff, 0xff
+		 * (2) labela1(%r0), $labela2, labela3
 		 * (3) %r0
 		 * (4) %(r0)
 		 */
@@ -890,11 +1173,21 @@ void Assembler::decypherRegex(int i) {
 			if(operand.str(i) != "") {
 				std::string operand2 = operand.str(i);
 				switch(i) {
-				// $0xff(%r0), $0xff, 0xff
+				// 0xff(%r0), $0xff, 0xff
 				case 1:
+					if(operand2[0] == '$' && operand2.find('(', 0) != std::string::npos) {
+						logger("Bad operand format, $literal(%r<num>) at line " + readingLineNumber);
+						exit(ERR_ARGUMENT);
+					}
 					if(operand2[0] == '$') {
-						operand2.erase(0,1);
-						auto position = operand2.find("(",0);
+						operand2.erase(0, 1);
+						addr2Mode = IMMED;
+						addr2.addressMode = MAPS::addressingMode[IMMED];
+						locationCounter++;
+						oper2.val = toInt16_t(operand2);
+						locationCounter += 2;
+					} else {
+						auto position = operand2.find('(',0);
 						if(position == std::string::npos) {
 							addr2Mode = MEMDIR;
 							addr2.addressMode = MAPS::addressingMode[MEMDIR];
@@ -913,18 +1206,25 @@ void Assembler::decypherRegex(int i) {
 							oper2.val = toInt16_t(operand2Literal);
 							locationCounter += 2;
 						}
-					} else {
-						logger("Dst operand immed at line " + readingLineNumber);
-						exit(ERR_INVALID_OPERAND);
 					}
-
 					break;
 
-				// $labela1(%r0), $labela2, labela3
+				// labela1(%r0), $labela2, labela3
 				case 2:
+
+					if(operand2[0] == '$' && operand2.find('(', 0) != std::string::npos) {
+						logger("Bad operand format, $symbol(%r<num) at line " + readingLineNumber);
+						exit(ERR_ARGUMENT);
+					}
 					if(operand2[0] == '$') {
-						operand2.erase(0,1);
-						auto position = operand2.find("(", 0);
+						operand2.erase(0, 1);
+						addr2Mode = IMMED;
+						addr2.addressMode = MAPS::addressingMode[IMMED];
+						locationCounter++;
+						oper2.val = autoRelocation(operand2, ADD, R_16);
+						locationCounter += 2;
+					} else {
+						auto position = operand2.find('(',0);
 						if(position == std::string::npos) {
 							addr2Mode = MEMDIR;
 							addr2.addressMode = MAPS::addressingMode[MEMDIR];
@@ -952,14 +1252,7 @@ void Assembler::decypherRegex(int i) {
 							}
 							locationCounter += 2;
 						}
-					} else {
-						addr2Mode = IMMED;
-						addr2.addressMode = MAPS::addressingMode[IMMED];
-						locationCounter++;
-						oper2.val = autoRelocation(operand2, ADD, R_16);
-						locationCounter += 2;
 					}
-
 					break;
 
 				// %r0
@@ -971,6 +1264,7 @@ void Assembler::decypherRegex(int i) {
 					if(operandSize == 0) {
 						addr2.part = (operand2[operand2.length() - 1] == 'l') ? 0 : 1;
 					}
+					locationCounter++;
 					break;
 
 				// %(r0)
@@ -980,25 +1274,34 @@ void Assembler::decypherRegex(int i) {
 					addr2Mode = REGIND;
 					addr2.addressMode = MAPS::addressingMode[REGIND];
 					addr2.regs = MAPS::regs[operand2];
+					locationCounter++;
 					break;
 				}
-
+				break;
 			}
 		}
 
-		if(addr2Mode == IMMED) {
-			if(isPcRel) {
-				oper1.val += (operandSize) ? -5 : -4;
-			}
+// proveri dozvoljena adresiranja sa instrukcijama, shr je jedino src, dst
+		if(addr1Mode == IMMED && instruction == "shr") {
+			logger("Illegal addressing for shr dst, src line number " + readingLineNumber);
+			exit(ERR_SYNTAX);
 		}
-		if(addr2Mode == REGIND16B || addr2Mode == MEMDIR) {
-			if(isPcRel) {
-				oper1.val += -5;
-			}
+		if(addr2Mode == IMMED && instruction != "shr") {
+			logger("Illegal addressing IMMED for dst operand at line number " + readingLineNumber);
+			exit(ERR_SYNTAX);
 		}
-		if(addr2Mode == REGDIR || addr2Mode == REGIND) {
-			if(isPcRel) {
-				oper1.val += -3;
+
+		if(isPcRel) {
+			if(addr2Mode == IMMED) {
+					oper1.val += (operandSize) ? -5 : -4;
+			}
+
+			if(addr2Mode == REGIND16B || addr2Mode == MEMDIR) {
+					oper1.val += -5;
+			}
+
+			if(addr2Mode == REGDIR || addr2Mode == REGIND) {
+					oper1.val += -3;
 			}
 		}
 

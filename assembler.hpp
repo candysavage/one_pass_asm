@@ -6,6 +6,9 @@
 #include <unordered_map>
 #include <vector>
 #include <fstream>
+#include <string>
+#include <iostream>
+#include <fstream>
 
 #include "auxiliary.hpp"
 
@@ -15,7 +18,7 @@ public:
 	~Assembler();
 
 	void generateObj();
-	void argumentsAnalyzer(int, char**);
+	void argumentsAnalyzer(int, std::vector<std::string>);
 private:
 	void assemble();
 	void backpatch();
@@ -39,9 +42,9 @@ private:
 	uint8_t currentSectionSymbolNumber;
 	uint8_t symbolNumber;
 
-	std::ofstream logFile;
-	std::ofstream objectFile;
-	std::ifstream asmFile;
+	std::fstream logFile;
+	std::fstream objectFile;
+	std::fstream asmFile;
 
 	std::unordered_map<std::string, symbolTableEntry> symbolTable;
 	std::unordered_map<std::string, sectionEntry> sectionTable;
@@ -71,6 +74,9 @@ private:
 	void calculateLiteral(std::string);
 	void calculateExpression(std::string, char, std::string);
 
+	int8_t toInt8_t(std::string);
+	int16_t toInt16_t(std::string);
+
 	void resolveSymbol(std::string);
 	int autoRelocation(std::string, char, std::string);
 
@@ -82,6 +88,9 @@ private:
 	void decypherRegex(int);
 
 	void logger(std::string);
+
+	template <typename T>
+	void printElement(T t);
 
 	std::string get(uint8_t);
 };

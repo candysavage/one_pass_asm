@@ -12,12 +12,17 @@ int main(int argc, char *argv[]) {
 	 **/
 	if (argc != 4) {
 		std::cerr << "*** INVALID ARGUMENT NUMBER ***" << std::endl;
-		std::cerr << "usage: as file1.s -o output.o" << std::endl;
+		std::cerr << "usage: asm src.s -o obj.o" << std::endl;
 
 		exit(1);
 	}
 
-	assembler->argumentsAnalyzer(argc, argv);
+	std::vector<std::string> args;
+	args.push_back(std::string(argv[1]));
+	args.push_back(std::string(argv[2]));
+	args.push_back(std::string(argv[3]));
+
+	assembler->argumentsAnalyzer(3, args);
 
 	assembler->generateObj();
 

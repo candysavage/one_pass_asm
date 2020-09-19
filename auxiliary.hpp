@@ -7,21 +7,26 @@
 #include <unordered_map>
 
 //EXIT CODES
-constexpr auto ERR_OK = 0, ERR_FOPEN = 1, ERR_ARGUMENT = 2, ERR_SYNTAX = 3,
+static constexpr auto ERR_OK = 0, ERR_FOPEN = 1, ERR_ARGUMENT = 2, ERR_SYNTAX = 3,
 		ERR_SECTION = 4, ERR_MULTIPLE_DEFINITIONS = 5, ERR_REDEFINITION = 6, ERR_PCREL_ARG = 7, ERR_INVALID_OPERAND = 8,
 		ERR_UNDEFINED_SYMBOL = 9;
 
-constexpr auto UNDEFINED_SECTION = 0;
+static constexpr auto UNDEFINED_SECTION = 0;
 
-constexpr auto ADD = '+', SUB = '-';
+static constexpr auto ADD = '+', SUB = '-';
 
-constexpr auto R_16 = "R_16", R_PC16 = "R_PC16", LITERAL = "LITERAL";
+static constexpr auto R_16 = "R_16", R_PC16 = "R_PC16", LITERAL = "LITERAL";
 
-constexpr auto IMMED = "immed", REGDIR = "regdir", REGIND = "regind",
+static constexpr auto IMMED = "immed", REGDIR = "regdir", REGIND = "regind",
 		REGIND16B = "regind16b", MEMDIR = "memdir";
 
-constexpr uint8_t r0 = 0x0, r1 = 0x1, r2 = 0x2, r3 = 0x3, r4 = 0x4, r5 = 0x5,
+static constexpr uint8_t r0 = 0x0, r1 = 0x1, r2 = 0x2, r3 = 0x3, r4 = 0x4, r5 = 0x5,
 		r6 = 0x6, sp = 0x6, r7 = 0x7, pc = 0x7, psw = 0xf;
+
+static constexpr auto INT16_T_MAX = 32767;
+static constexpr auto INT16_T_MIN = -32768;
+static constexpr auto INT8_T_MAX = 127;
+static constexpr auto INT8_T_MIN = -128;
 
 class MAPS {
 public:
