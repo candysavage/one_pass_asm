@@ -1,6 +1,8 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
+
 #include "assembler.hpp"
 #include "auxiliary.hpp"
 
@@ -15,12 +17,12 @@ const char *regexes[] ={
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*\\.word[ 	]+((?:-?[a-zA-Z_0-9]+)(?:,-?[a-zA-Z_0-9]+)*)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*\\.skip[ 	]+((?:0x)?[0-9a-fA-F]+)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(halt|iret|ret)[ 	]*(?:#.*)*$",
-		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(int|call|jmp|jeq|jne|jgt|push|pop)[ 	]+((?:(?:\\*)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:\\*%(?:r[0-7]|pc|sp))|(?:\\*\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$",
-		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\))),[ 	]*((?:(?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$"
+		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(int|call|jmp|jeq|jne|jgt|push|pop)[ 	]+((?:(?:\\*)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?%(?:r[0-7]|pc|sp))|(?:(?:\\*)?\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$",
+		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\))),[ 	]*((?:(?:\\$)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$"
 };
 
-const char* jumpRegex = "((?:\\*)?(?:0x)?(?:[1-9a-fA-F][0-9a-fA-F]*)(?:\\(%r[0-7]|pc|sp\\))?)|((?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(\\*%(?:r[0-7]|pc|sp))|(\\*\\(%(?:r[0-7]|pc|sp)\\))";
-const char* instrOperandRegex = "((?:\\$)?(?:0x)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)\\))";
+const char* jumpRegex = "((?:\\*)?(?:0x[0-9a-fA-F]+|-?[1-9][0-9]*)(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(\\*%(?:r[0-7]|pc|sp))|(\\*\\(%(?:r[0-7]|pc|sp)\\))";
+const char* instrOperandRegex = "((?:\\$)?(?:0x[0-9a-fA-F]+|-?[1-9][0-9]*)(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)\\))";
 
 Assembler::Assembler() {
 
@@ -37,6 +39,7 @@ Assembler::Assembler() {
 	}
 	sectionTable.insert( { currentSection, { locationCounter,
 			currentSectionSymbolNumber } });
+	sectionTranslation.insert({0, "UNDEFINED"});
 
 	logger("Created Assembler class object\n");
 
@@ -106,6 +109,19 @@ void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 	}
 }
 
+bool compareSymbol(std::pair<std::string, symbolTableEntry> a, std::pair<std::string, symbolTableEntry> b) {
+	if(a.second.symbolType == "section" && b.second.symbolType == "section") {
+		return true;
+	}
+	if(a.second.symbolType == "section" && b.second.symbolType == "label") {
+		return true;
+	}
+	if(a.second.symbolType == "label" && b.second.symbolType == "section") {
+		return false;
+	}
+
+	return true;
+}
 
 template<typename T>
 void Assembler::printElement(T t){
@@ -188,6 +204,8 @@ void Assembler::generateObj() {
 	}
 
 	// tabela simbola
+	std::vector<std::pair<std::string, symbolTableEntry>> symbols(symbolTable.begin(), symbolTable.end());
+	std::sort(symbols.begin(), symbols.end(), compareSymbol);
 	objectFile << "%SYMBOL TABLE%" << std::endl;
 	printElement("Symbol");
 	printElement("Symbol number");
@@ -197,7 +215,7 @@ void Assembler::generateObj() {
 	printElement("Size");
 	printElement("SymbolType");
 	objectFile << std::endl;
-	for(auto symbol : symbolTable) {
+	for(auto symbol : symbols) {
 		printElement(symbol.first);
 		printElement((int)symbol.second.number);
 		printElement(sectionTranslation[symbol.second.sectionNumber]);
@@ -1054,11 +1072,20 @@ void Assembler::decypherRegex(int i) {
 						addr1Mode = IMMED;
 						addr1.addressMode = MAPS::addressingMode[IMMED];
 						locationCounter++;
-						oper1.val = toInt16_t(operand1);
-						locationCounter += 2;
+						if(operandSize) {
+							oper1.val = toInt16_t(operand1);
+							locationCounter += 2;
+						} else {
+							oper1.val = toInt8_t(operand1);
+							locationCounter++;
+						}
 					} else {
 						auto position = operand1.find('(',0);
 						if(position == std::string::npos) {
+							if(operand1[0] == '-') {
+								logger("Negative address at line " + readingLineNumber);
+								exit(ERR_SYNTAX);
+							}
 							addr1Mode = MEMDIR;
 							addr1.addressMode = MAPS::addressingMode[MEMDIR];
 							locationCounter++;
@@ -1184,11 +1211,20 @@ void Assembler::decypherRegex(int i) {
 						addr2Mode = IMMED;
 						addr2.addressMode = MAPS::addressingMode[IMMED];
 						locationCounter++;
-						oper2.val = toInt16_t(operand2);
-						locationCounter += 2;
+						if(operandSize) {
+							oper2.val = toInt16_t(operand2);
+							locationCounter += 2;
+						} else {
+							oper2.val = toInt8_t(operand2);
+							locationCounter++;
+						}
 					} else {
 						auto position = operand2.find('(',0);
 						if(position == std::string::npos) {
+							if(operand2[0] == '-') {
+								logger("Negative address at line " + readingLineNumber);
+								exit(ERR_SYNTAX);
+							}
 							addr2Mode = MEMDIR;
 							addr2.addressMode = MAPS::addressingMode[MEMDIR];
 							locationCounter++;
@@ -1282,11 +1318,11 @@ void Assembler::decypherRegex(int i) {
 		}
 
 // proveri dozvoljena adresiranja sa instrukcijama, shr je jedino src, dst
-		if(addr1Mode == IMMED && instruction == "shr") {
+		if(addr1Mode == IMMED && mnemonic.opcode == MAPS::opCode["shr"]) {
 			logger("Illegal addressing for shr dst, src line number " + readingLineNumber);
 			exit(ERR_SYNTAX);
 		}
-		if(addr2Mode == IMMED && instruction != "shr") {
+		if(addr2Mode == IMMED && mnemonic.opcode != MAPS::opCode["shr"]) {
 			logger("Illegal addressing IMMED for dst operand at line number " + readingLineNumber);
 			exit(ERR_SYNTAX);
 		}
