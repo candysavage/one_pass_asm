@@ -1,0 +1,42 @@
+%SYMBOL TABLE%
+              Symbol       Symbol number             Section              Offset                Type                Size          SymbolType
+                data                   5                data                   0               local                  24             section
+                text                   7                text                   0               local                  36             section
+                   a                   1                data                   0              global                   0               label
+                   d                   9                text                   8               local                   0               label
+                   c                   2                data                  24              global                   0               label
+                   e                   3           UNDEFINED                   0              extern                   0               label
+                   f                   4           UNDEFINED                   0              extern                   0               label
+               start                   8                text                   0               local                   0               label
+                   b                   6                data                  16               local                   0               label
+                   g                  10                text                  28               local                   0               label
+                   s                  11                text                  36               local                   0               label
+                 mam                  12                text                  36               local                   0               label
+
+%EQU SYMBOLS%
+              Symbol               Value         Relocations
+                expr               -4650              -7 +7 
+            dvanaest                  12                    
+
+%RELOCATION TABLE% - section                 text
+       Symbol number              Offset           Operation     Relocation type
+                   7                  18                   +              R_PC16
+                   7                  22                   +                R_16
+                   7                  26                   +                R_16
+
+%RELOCATION TABLE% - section                 data
+       Symbol number              Offset           Operation     Relocation type
+                   1                  16                   +                R_16
+                   7                  22                   -                R_16
+                   7                  22                   +                R_16
+
+
+.text	36
+48 2a 64 2c 2a b4 20 20 6c 6a 0c 00 20 74 20 20 
+20 6e fe ff 18 00 08 00 28 80 08 00 b8 00 01 20 
+c0 21 00 01 
+
+.data	18
+90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 
+00 00 21 43 ff ff d6 ed 
+

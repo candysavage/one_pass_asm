@@ -109,7 +109,7 @@ void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 	}
 }
 
-bool compareSymbol(std::pair<std::string, symbolTableEntry> a, std::pair<std::string, symbolTableEntry> b) {
+bool compareSymbolTypes(std::pair<std::string, symbolTableEntry> a, std::pair<std::string, symbolTableEntry> b) {
 	if(a.second.symbolType == "section" && b.second.symbolType == "section") {
 		return true;
 	}
@@ -121,6 +121,27 @@ bool compareSymbol(std::pair<std::string, symbolTableEntry> a, std::pair<std::st
 	}
 
 	return true;
+}
+
+bool compareUINT8_T(std::pair<std::string, symbolTableEntry> a, std::pair<std::string, symbolTableEntry> b) {
+	if(a.second.number <= b.second.number) {
+		return true;
+	}
+	return false;
+}
+
+bool compareRelocationOffsets(relocationEntry a, relocationEntry b) {
+	if(a.offset <= b.offset) {
+		return true;
+	}
+	return false;
+}
+
+bool compareValues(std::pair<std::string, literalEntry> a, std::pair<std::string, literalEntry> b) {
+	if(a.second.value <= b.second.value) {
+		return true;
+	}
+	return false;
 }
 
 template<typename T>
@@ -154,13 +175,13 @@ void Assembler::generateObj() {
 			if(checkSymbolIsLiteral(symbol)) {
 				auto& literal = literalTable[symbol];
 				if(entry.size == 1) {
-					vect[offset] += (operation == ADD) ? literal.value : 0 - literal.value;
-					if(literal.relocations.size() != 0) {
+					if(literal.relocations.size() != 0 || literal.value < -128 || literal.value > 127) {
 						std::stringstream log;
 						log << "2B literal used in 1B backpatch section " << section << " offset " << offset;
 						logger(log.str());
 						exit(ERR_INVALID_OPERAND);
 					}
+					vect[offset] += (operation == ADD) ? literal.value : 0 - literal.value;
 				} else {
 					ImmedValues immed;
 					immed.byte1 = vect[offset];
@@ -205,7 +226,7 @@ void Assembler::generateObj() {
 
 	// tabela simbola
 	std::vector<std::pair<std::string, symbolTableEntry>> symbols(symbolTable.begin(), symbolTable.end());
-	std::sort(symbols.begin(), symbols.end(), compareSymbol);
+	std::sort(symbols.begin(), symbols.end(), compareSymbolTypes);
 	objectFile << "%SYMBOL TABLE%" << std::endl;
 	printElement("Symbol");
 	printElement("Symbol number");
@@ -233,7 +254,9 @@ void Assembler::generateObj() {
 	printElement("Value");
 	printElement("Relocations");
 	objectFile << std::endl;
-	for(auto literal : literalTable) {
+	std::vector<std::pair<std::string, literalEntry>> literals(literalTable.begin(), literalTable.end());
+	std::sort(literals.begin(), literals.end(), compareValues);
+	for(auto literal : literals) {
 		printElement(literal.first);
 		printElement((int)literal.second.value);
 		std::stringstream ss;
@@ -258,6 +281,8 @@ void Assembler::generateObj() {
 		printElement("Operation");
 		printElement("Relocation type");
 		objectFile << std::endl;
+		std::vector<relocationEntry> relocs(it.second.begin(), it.second.end());
+		std::sort(relocs.begin(), relocs.end(), compareRelocationOffsets);
 		for(auto reloc : it.second) {
 			printElement((int)reloc.value);
 			printElement(reloc.offset);

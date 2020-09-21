@@ -6,8 +6,9 @@
 .data
 a:
     .skip 0x10
-b:    .word a,0x4321
+b:  .word a,0x4321
     .byte 0xff,-1
+    .word expr
 c:
 
 #komentar
