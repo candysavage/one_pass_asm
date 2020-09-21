@@ -88,6 +88,7 @@ private:
 	void decypherRegex(int);
 
 	void logger(std::string);
+	void logger(std::string s, int i);
 
 	template <typename T>
 	void printElement(T t);

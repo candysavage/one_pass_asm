@@ -18,11 +18,16 @@ const char *regexes[] ={
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*\\.skip[ 	]+((?:0x)?[0-9a-fA-F]+)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(halt|iret|ret)[ 	]*(?:#.*)*$",
 		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(int|call|jmp|jeq|jne|jgt|push|pop)[ 	]+((?:(?:\\*)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\*)?%(?:r[0-7]|pc|sp))|(?:(?:\\*)?\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$",
-		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\))),[ 	]*((?:(?:\\$)?(?:0x|-)?[1-9a-fA-F][0-9a-fA-F]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$"
+		"^[ 	]*(?:([a-zA-Z_][a-zA-Z_0-9]*):)?[ 	]*(xchg[bw]?|not[bw]?|mov[bw]?|add[bw]?|sub[bw]?|mul[bw]?|div[bw]?|cmp[bw]?|and[bw]?|or[bw]?|xor[bw]?|test[bw]?|shl[bw]?|shr[bw]?)[ 	]+((?:(?:\\$)?(?:0x|-)?[0-9a-fA-F]+(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\))),[ 	]*((?:(?:\\$)?(?:0x|-)?[0-9a-fA-F]+(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:(?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(?:%(?:r[0-7]|pc|sp)[lh]?)|(?:\\(%(?:r[0-7]|pc|sp)\\)))[ 	]*(?:#.*)*$"
 };
 
 const char* jumpRegex = "((?:\\*)?(?:0x[0-9a-fA-F]+|-?[1-9][0-9]*)(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\*)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(\\*%(?:r[0-7]|pc|sp))|(\\*\\(%(?:r[0-7]|pc|sp)\\))";
-const char* instrOperandRegex = "((?:\\$)?(?:0x[0-9a-fA-F]+|-?[1-9][0-9]*)(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)\\))";
+const char* instrOperandRegex = "((?:\\$)?(?:0x[0-9a-fA-F]+|-?[0-9]+)(?:\\(%(?:r[0-7]|pc|sp)\\))?)|((?:\\$)?[a-zA-Z_][a-zA-Z_0-9]*(?:\\(%(?:r[0-7]|pc|sp)\\))?)|(%(?:r[0-7]|pc|sp)[lh]?)|(\\(%(?:r[0-7]|pc|sp)\\))";
+
+void returnErrorCode(const int err) {
+	printf("**** Application returned error code %d ****", err);
+	exit(err);
+}
 
 Assembler::Assembler() {
 
@@ -35,7 +40,7 @@ Assembler::Assembler() {
 	logFile.open("assemblyLog.txt", std::ios::out);
 	if (!logFile.good()) {
 		std::cout << "Unable to open log file. Abort.\n" << std::endl;
-		exit(ERR_FOPEN);
+		returnErrorCode(ERR_FOPEN);
 	}
 	sectionTable.insert( { currentSection, { locationCounter,
 			currentSectionSymbolNumber } });
@@ -76,6 +81,10 @@ void Assembler::logger(std::string s) {
 	logFile << s << std::endl;
 }
 
+void Assembler::logger(std::string s, int i) {
+	logFile << s << i << std::endl;
+}
+
 void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 	auto isNextObj = false;
 	for (auto i = 0; i < argc; i++) {
@@ -84,7 +93,7 @@ void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 			isNextObj = false;
 			if (!objectFile.good()) {
 				logger("Error while trying to create obj file");
-				exit(ERR_FOPEN);
+				returnErrorCode(ERR_FOPEN);
 			}
 		} else {
 			auto first = args[i][0];
@@ -94,14 +103,14 @@ void Assembler::argumentsAnalyzer(int argc, std::vector<std::string> args) {
 					isNextObj = true;
 				} else {
 					logger("Invalid argument after - ");
-					exit(ERR_ARGUMENT);
+					returnErrorCode(ERR_ARGUMENT);
 				}
 				break;
 			default:
 				asmFile.open(args[i], std::ios::in);
 				if (!asmFile.good()) {
 					logger("Error while trying to open src file");
-					exit(ERR_FOPEN);
+					returnErrorCode(ERR_FOPEN);
 				}
 				break;
 			}
@@ -158,12 +167,14 @@ void Assembler::generateObj() {
 			break;
 	}
 
+	logger("Finished parsing file");
 	// prvo izracunaj sve izraze u literalima
 	for(auto iter = literalTable.begin() ; iter != literalTable.end(); ++iter) {
 		auto literal = iter->first;
 		calculateLiteral(literal);
 	}
 
+	logger("Calculated literal symbols");
 	// onda backpatching koda i potrebne relokacije
 	for(auto iter = TII.begin(); iter != TII.end(); iter++) {
 		auto symbol = iter->first;
@@ -179,7 +190,7 @@ void Assembler::generateObj() {
 						std::stringstream log;
 						log << "2B literal used in 1B backpatch section " << section << " offset " << offset;
 						logger(log.str());
-						exit(ERR_INVALID_OPERAND);
+						returnErrorCode(ERR_INVALID_OPERAND);
 					}
 					vect[offset] += (operation == ADD) ? literal.value : 0 - literal.value;
 				} else {
@@ -197,33 +208,47 @@ void Assembler::generateObj() {
 				if(checkSymbolExists(symbol)) {
 					auto& sym = symbolTable[symbol];
 					if(checkSymbolIsExtern(symbol) || checkSymbolIsGlobal(symbol)) {
-						relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.number});
+						if(checkSymbolIsGlobal(symbol) && entry.relocationType == R_PC16 && section == sym.sectionNumber) {
+							ImmedValues immed;
+							immed.byte1 = vect[offset];
+							immed.byte2 = vect[offset+1];
+							immed.val += sym.offset - offset;
+							vect[offset] = immed.byte1;
+							vect[offset+1] = immed.byte2;
+						} else {
+							relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.number});
+						}
 					} else {
 						if(checkSymbolIsDefined(symbol)) {
 							ImmedValues immed;
 							immed.byte1 = vect[offset];
 							immed.byte2 = vect[offset+1];
-							immed.val += (operation == ADD) ? sym.offset : 0 - sym.offset;
+							if(entry.relocationType != R_PC16 || section != sym.sectionNumber) {
+								immed.val += (operation == ADD) ? sym.offset : 0 - sym.offset;
+								relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.sectionNumber});
+							} else {
+								immed.val += sym.offset - offset;
+							}
 							vect[offset] = immed.byte1;
 							vect[offset+1] = immed.byte2;
-							relocationTable[sectionTranslation[section]].push_back({offset, entry.relocationType, operation, sym.sectionNumber});
 						} else {
 							std::stringstream log;
 							log << "Symbol doesn't exist, backpatching failed at section " << entry.sectionNumber << " offset " << entry.offset;
 							logger(log.str());
-							exit(ERR_UNDEFINED_SYMBOL);
+							returnErrorCode(ERR_UNDEFINED_SYMBOL);
 						}
 					}
 				} else {
 					std::stringstream log;
 					log << "Symbol doesn't exist, backpatching failed at section " << entry.sectionNumber << " offset " << entry.offset;
 					logger(log.str());
-					exit(ERR_UNDEFINED_SYMBOL);
+					returnErrorCode(ERR_UNDEFINED_SYMBOL);
 				}
 			}
 		}
 	}
 
+	logger("Done backpatching");
 	// tabela simbola
 	std::vector<std::pair<std::string, symbolTableEntry>> symbols(symbolTable.begin(), symbolTable.end());
 	std::sort(symbols.begin(), symbols.end(), compareSymbolTypes);
@@ -237,6 +262,10 @@ void Assembler::generateObj() {
 	printElement("SymbolType");
 	objectFile << std::endl;
 	for(auto symbol : symbols) {
+		if(symbol.second.sectionNumber == UNDEFINED_SECTION && symbol.second.type != "extern") {
+			logger("Undefined non-extern symbol");
+			returnErrorCode(ERR_SYNTAX);
+		}
 		printElement(symbol.first);
 		printElement((int)symbol.second.number);
 		printElement(sectionTranslation[symbol.second.sectionNumber]);
@@ -281,8 +310,7 @@ void Assembler::generateObj() {
 		printElement("Operation");
 		printElement("Relocation type");
 		objectFile << std::endl;
-		std::vector<relocationEntry> relocs(it.second.begin(), it.second.end());
-		std::sort(relocs.begin(), relocs.end(), compareRelocationOffsets);
+		std::sort(it.second.begin(), it.second.end(), compareRelocationOffsets);
 		for(auto reloc : it.second) {
 			printElement((int)reloc.value);
 			printElement(reloc.offset);
@@ -299,7 +327,7 @@ void Assembler::generateObj() {
 		if(it.first == "UNDEFINED") {
 			continue;
 		}
-		objectFile << "." <<it.first<<"\t"<<it.second.sectionSize<<std::endl;
+		objectFile <<std::dec<< "." <<it.first<<"\t"<<(int)it.second.sectionSize<<std::endl;
 		auto breaker = 0;
 		for(auto i : machineCode[it.second.number]) {
 			objectFile<<std::setfill('0')<<std::hex<<std::setw(2)<<(unsigned)i<<" ";
@@ -361,8 +389,8 @@ void Assembler::addNewLabel(std::string label) {
 
 void Assembler::checkSection() {
 	if (currentSection == "UNDEFINED") {
-		logger("Out of section code at line " + readingLineNumber);
-		exit(ERR_SECTION);
+		logger("Out of section code at line ",readingLineNumber);
+		returnErrorCode(ERR_SECTION);
 	}
 }
 
@@ -374,13 +402,13 @@ void Assembler::addGlobal(std::string expression) {
 	auto symbols = parserComma(expression);
 	for (auto symbol : symbols) {
 		if (checkSymbolIsLiteral(symbol)) {
-			logger("Symbol is literal, cannot be global, at line " + readingLineNumber);
-			exit(ERR_REDEFINITION);
+			logger("Symbol is literal, cannot be global, at line ",readingLineNumber);
+			returnErrorCode(ERR_REDEFINITION);
 		}
 		if (checkSymbolExists(symbol)) {
 			if(checkSymbolIsExtern(symbol)) {
-				logger("Symbol cannot be extern and global, at line " + readingLineNumber);
-				exit(ERR_UNDEFINED_SYMBOL);
+				logger("Symbol cannot be extern and global, at line ",readingLineNumber);
+				returnErrorCode(ERR_UNDEFINED_SYMBOL);
 			}
 			symbolTable[symbol].type = "global";
 		} else {
@@ -396,12 +424,12 @@ void Assembler::addExtern(std::string expression) {
 	for (auto symbol : symbols) {
 		if (checkSymbolIsLiteral(symbol)) {
 			logger(
-					"Symbol is literal, cannot be extern, at line " + readingLineNumber);
-			exit(ERR_REDEFINITION);
+					"Symbol is literal, cannot be extern, at line ",readingLineNumber);
+			returnErrorCode(ERR_REDEFINITION);
 		}
 		if (checkSymbolExists(symbol)) {
-			logger("Symbol declared extern already exists in symbol table, error in line " + readingLineNumber);
-			exit(ERR_MULTIPLE_DEFINITIONS);
+			logger("Symbol declared extern already exists in symbol table, error in line ",readingLineNumber);
+			returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 		}
 		++symbolNumber;
 		symbolTable.insert( { symbol, { symbolNumber, UNDEFINED_SECTION, 0,
@@ -414,13 +442,13 @@ void Assembler::resolveSymbol(std::string symbol) {
 		return;
 	}
 	if (checkSymbolIsLiteral(symbol)) {
-		logger("Multiple definitions of symbol at line " + readingLineNumber);
-		exit(ERR_MULTIPLE_DEFINITIONS);
+		logger("Multiple definitions of symbol at line ",readingLineNumber);
+		returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 	}
 	if (checkSymbolExists(symbol)) {
 		if (checkSymbolIsDefined(symbol) || checkSymbolIsExtern(symbol)) {
-			logger("Multiple definitions or symbol is extern, symbol at line " + readingLineNumber);
-			exit(ERR_MULTIPLE_DEFINITIONS);
+			logger("Multiple definitions or symbol is extern, symbol at line ",readingLineNumber);
+			returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 		} else {
 			defineLabel(symbol);
 		}
@@ -435,8 +463,8 @@ void Assembler::calculateExpression(std::string lit, char operation, std::string
 		 literal.value += (operation == ADD) ? toInt16_t(operand) : 0 - toInt16_t(operand);
 	} else {
 		if(checkSymbolIsLiteral(operand)) {
-			logger("Equ defined literal used in equ definition at line " + readingLineNumber);
-			exit(ERR_SYNTAX);
+			logger("Equ defined literal used in equ definition at line ",readingLineNumber);
+			returnErrorCode(ERR_SYNTAX);
 		}
 		if(checkSymbolExists(operand)) {
 			if(checkSymbolIsExtern(operand) || checkSymbolIsGlobal(operand)) {
@@ -447,12 +475,12 @@ void Assembler::calculateExpression(std::string lit, char operation, std::string
 					literal.relocations.push_back({symbolTable[operand].sectionNumber, operation, R_16});
 				} else {
 					logger("Error, symbol undefined in equ definition for " + lit);
-					exit(ERR_UNDEFINED_SYMBOL);
+					returnErrorCode(ERR_UNDEFINED_SYMBOL);
 				}
 			}
 		} else {
 		logger("Error, symbol undefined in equ definition for " + lit);
-		exit(ERR_UNDEFINED_SYMBOL);
+		returnErrorCode(ERR_UNDEFINED_SYMBOL);
 		}
 	}
 }
@@ -512,8 +540,8 @@ int16_t Assembler::toInt16_t(std::string str) {
 	}
 
 	if(val > 65535) {
-		logger("Too large value used in word directive at line " + readingLineNumber);
-		exit(ERR_ARGUMENT);
+		logger("Too large value used in word directive at line ",readingLineNumber);
+		returnErrorCode(ERR_ARGUMENT);
 	}
 	return (int16_t) val;
 }
@@ -535,8 +563,8 @@ int8_t Assembler::toInt8_t(std::string str) {
 	}
 
 	if(val > 255) {
-		logger("Too large value used in byte directive at line " + readingLineNumber);
-		exit(ERR_ARGUMENT);
+		logger("Too large value used in byte directive at line ",readingLineNumber);
+		returnErrorCode(ERR_ARGUMENT);
 	}
 
 	return (int8_t)val;
@@ -551,8 +579,8 @@ void Assembler::validateRegex() {
 		}
 	}
 	if (i == numberOfRegex) {
-		logger("Bad syntax in input file at line " + readingLineNumber);
-		exit(ERR_SYNTAX);
+		logger("Bad syntax in input file at line ",readingLineNumber);
+		returnErrorCode(ERR_SYNTAX);
 	}
 }
 
@@ -569,11 +597,19 @@ int Assembler::autoRelocation(std::string symbol, char operation, std::string re
 	} else {
 		if (checkSymbolExists(symbol)) {
 			if(checkSymbolIsExtern(symbol) || checkSymbolIsGlobal(symbol)) {
-				createRelocation(symbolTable[symbol].number, relocationType, operation);
+				if(checkSymbolIsGlobal(symbol) && relocationType == R_PC16 && symbolTable[symbol].sectionNumber == currentSectionSymbolNumber) {
+					value = symbolTable[symbol].offset - locationCounter;
+				} else {
+					createRelocation(symbolTable[symbol].number, relocationType, operation);
+				}
 			} else {
 				if(checkSymbolIsDefined(symbol)) {
-					value = symbolTable[symbol].offset;
-					createRelocation(symbolTable[symbol].sectionNumber, relocationType, operation);					
+					if(relocationType != R_PC16 || symbolTable[symbol].sectionNumber != currentSectionSymbolNumber){
+						value = symbolTable[symbol].offset;
+						createRelocation(symbolTable[symbol].sectionNumber, relocationType, operation);
+					} else {
+						value = symbolTable[symbol].offset - locationCounter;
+					}
 				} else {
 					createBackpatchEntry(symbol, operation, 2, relocationType);
 				}
@@ -616,13 +652,13 @@ void Assembler::decypherRegex(int i) {
 		}
 
 		if (checkSymbolIsLiteral(section)) {
-			logger("Multiple definitions of symbol at line " + readingLineNumber);
-			exit(ERR_MULTIPLE_DEFINITIONS);
+			logger("Multiple definitions of symbol at line ",readingLineNumber);
+			returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 		}
 		if (checkSymbolExists(section)) {
 			if (checkSymbolIsDefined(section)) {
-				logger("Multiple definitions of section at line " + readingLineNumber);
-				exit(ERR_MULTIPLE_DEFINITIONS);
+				logger("Multiple definitions of section at line ",readingLineNumber);
+				returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 			}
 			auto& symbol = symbolTable.at(section);
 			symbol.sectionNumber = symbol.number;
@@ -646,13 +682,13 @@ void Assembler::decypherRegex(int i) {
 	case regexEqu:
 	{
 		if (currentSection != "UNDEFINED") {
-			logger("Error: out of section .equ only, line " + readingLineNumber);
-			exit(ERR_SECTION);
+			logger("Error: out of section .equ only, line ",readingLineNumber);
+			returnErrorCode(ERR_SECTION);
 		}
 		auto symbol = get(SYMBOL);
 		if (checkSymbolIsLiteral(symbol) || checkSymbolExists(symbol)) {
-			logger("EQU defined symbol already exists at line " + readingLineNumber);
-			exit(ERR_MULTIPLE_DEFINITIONS);
+			logger("EQU defined symbol already exists at line ",readingLineNumber);
+			returnErrorCode(ERR_MULTIPLE_DEFINITIONS);
 		}
 		literalTable.insert( { symbol, { get(EXPRESSION), 0 } });
 	}
@@ -661,8 +697,8 @@ void Assembler::decypherRegex(int i) {
 	case regexGlobal:
 	{
 		if (currentSection != "UNDEFINED") {
-			logger("Error: out of section .global only, line " + readingLineNumber);
-			exit(ERR_SECTION);
+			logger("Error: out of section .global only, line ",readingLineNumber);
+			returnErrorCode(ERR_SECTION);
 		}
 		addGlobal(get(SYMBOL));
 	}
@@ -671,8 +707,8 @@ void Assembler::decypherRegex(int i) {
 	case regexExtern:
 	{
 		if (currentSection != "UNDEFINED") {
-			logger("Error: out of section .extern only, line " + readingLineNumber);
-			exit(ERR_SECTION);
+			logger("Error: out of section .extern only, line ",readingLineNumber);
+			returnErrorCode(ERR_SECTION);
 		}
 		addExtern(get(SYMBOL));
 	}
@@ -695,16 +731,16 @@ void Assembler::decypherRegex(int i) {
 			if (sym[0] >= '0' && sym[0] <= '9') {
 				value = toInt8_t(sym);
 				if(operation == '-' && value == INT8_T_MIN) {
-					logger("Overflow value at byte directive, line number " + readingLineNumber);
-					exit(ERR_ARGUMENT);
+					logger("Overflow value at byte directive, line number ",readingLineNumber);
+					returnErrorCode(ERR_ARGUMENT);
 				}
 				value = (operation == '+') ? value : 0 - value;
 			} else {
 				if (literalTable.find(sym) != literalTable.end()) {
 					createBackpatchEntry(sym, operation, 1, LITERAL);
 				} else {
-					logger("Error, unavailable symbol in byte directive, line " + readingLineNumber);
-					exit(ERR_SYNTAX);
+					logger("Error, unavailable symbol in byte directive, line ",readingLineNumber);
+					returnErrorCode(ERR_SYNTAX);
 				}
 			}
 			machineCode[currentSectionSymbolNumber].push_back(value);
@@ -730,8 +766,8 @@ void Assembler::decypherRegex(int i) {
 			if (sym[0] >= '0' && sym[0] <= '9') {
 				value = toInt16_t(sym);
 				if(operation == '-' && value == INT16_T_MIN) {
-					logger("Overflow value at word directive, line number " + readingLineNumber);
-					exit(ERR_ARGUMENT);
+					logger("Overflow value at word directive, line number ",readingLineNumber);
+					returnErrorCode(ERR_ARGUMENT);
 				}
 				value = (operation == ADD) ? value : 0 - value;
 			} else {
@@ -754,8 +790,8 @@ void Assembler::decypherRegex(int i) {
 		auto expr = get(EXPRESSION);
 		int16_t value = toInt16_t(expr);
 		if (value < 0) {
-			logger("Negative value in skip at line " + readingLineNumber);
-			exit(ERR_SYNTAX);
+			logger("Negative value in skip at line ",readingLineNumber);
+			returnErrorCode(ERR_SYNTAX);
 		}
 		for(auto i = 0; i < value; i++) {
 		machineCode[currentSectionSymbolNumber].push_back(0x90);
@@ -931,8 +967,8 @@ void Assembler::decypherRegex(int i) {
 					// 0xff(%r0), $0xff, 0xff
 					case 1:
 						if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
-							logger("Bad operand format, $literal(%r<num) at line " + readingLineNumber);
-							exit(ERR_ARGUMENT);
+							logger("Bad operand format, $literal(%r<num) at line ",readingLineNumber);
+							returnErrorCode(ERR_ARGUMENT);
 						}
 						if(operand1[0] == '$') {
 							operand1.erase(0, 1);
@@ -967,8 +1003,8 @@ void Assembler::decypherRegex(int i) {
 					// labela1(%r0), $labela2, labela3
 					case 2:
 						if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
-							logger("Bad operand format, $symbol(%r<num) at line " + readingLineNumber);
-							exit(ERR_ARGUMENT);
+							logger("Bad operand format, $symbol(%r<num) at line ",readingLineNumber);
+							returnErrorCode(ERR_ARGUMENT);
 						}
 						if(operand1[0] == '$') {
 							operand1.erase(0, 1);
@@ -1033,8 +1069,8 @@ void Assembler::decypherRegex(int i) {
 			}
 
 			if(instruction == "pop" && addrMode == IMMED) {
-				logger("Pop + immed illegal combination, line number " + readingLineNumber);
-				exit(ERR_ARGUMENT);
+				logger("Pop + immed illegal combination, line number ",readingLineNumber);
+				returnErrorCode(ERR_ARGUMENT);
 			}
 
 			machineCode[currentSectionSymbolNumber].push_back(addr.val);
@@ -1089,8 +1125,8 @@ void Assembler::decypherRegex(int i) {
 				// 0xff(%r0), $0xff, 0xff
 				case 1:
 					if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
-						logger("Bad operand format, $literal(%r<num) at line " + readingLineNumber);
-						exit(ERR_ARGUMENT);
+						logger("Bad operand format, $literal(%r<num) at line ",readingLineNumber);
+						returnErrorCode(ERR_ARGUMENT);
 					}
 					if(operand1[0] == '$') {
 						operand1.erase(0, 1);
@@ -1108,8 +1144,8 @@ void Assembler::decypherRegex(int i) {
 						auto position = operand1.find('(',0);
 						if(position == std::string::npos) {
 							if(operand1[0] == '-') {
-								logger("Negative address at line " + readingLineNumber);
-								exit(ERR_SYNTAX);
+								logger("Negative address at line ",readingLineNumber);
+								returnErrorCode(ERR_SYNTAX);
 							}
 							addr1Mode = MEMDIR;
 							addr1.addressMode = MAPS::addressingMode[MEMDIR];
@@ -1134,8 +1170,8 @@ void Assembler::decypherRegex(int i) {
 				// labela1(%r0), $labela2, labela3
 				case 2:
 					if(operand1[0] == '$' && operand1.find('(', 0) != std::string::npos) {
-						logger("Bad operand format, $symbol(%r<num>) at line " + readingLineNumber);
-						exit(ERR_ARGUMENT);
+						logger("Bad operand format, $symbol(%r<num>) at line ",readingLineNumber);
+						returnErrorCode(ERR_ARGUMENT);
 					}
 					if(operand1[0] == '$') {
 						operand1.erase(0, 1);
@@ -1228,8 +1264,8 @@ void Assembler::decypherRegex(int i) {
 				// 0xff(%r0), $0xff, 0xff
 				case 1:
 					if(operand2[0] == '$' && operand2.find('(', 0) != std::string::npos) {
-						logger("Bad operand format, $literal(%r<num>) at line " + readingLineNumber);
-						exit(ERR_ARGUMENT);
+						logger("Bad operand format, $literal(%r<num>) at line ",readingLineNumber);
+						returnErrorCode(ERR_ARGUMENT);
 					}
 					if(operand2[0] == '$') {
 						operand2.erase(0, 1);
@@ -1247,8 +1283,8 @@ void Assembler::decypherRegex(int i) {
 						auto position = operand2.find('(',0);
 						if(position == std::string::npos) {
 							if(operand2[0] == '-') {
-								logger("Negative address at line " + readingLineNumber);
-								exit(ERR_SYNTAX);
+								logger("Negative address at line ",readingLineNumber);
+								returnErrorCode(ERR_SYNTAX);
 							}
 							addr2Mode = MEMDIR;
 							addr2.addressMode = MAPS::addressingMode[MEMDIR];
@@ -1274,8 +1310,8 @@ void Assembler::decypherRegex(int i) {
 				case 2:
 
 					if(operand2[0] == '$' && operand2.find('(', 0) != std::string::npos) {
-						logger("Bad operand format, $symbol(%r<num) at line " + readingLineNumber);
-						exit(ERR_ARGUMENT);
+						logger("Bad operand format, $symbol(%r<num) at line ",readingLineNumber);
+						returnErrorCode(ERR_ARGUMENT);
 					}
 					if(operand2[0] == '$') {
 						operand2.erase(0, 1);
@@ -1344,12 +1380,12 @@ void Assembler::decypherRegex(int i) {
 
 // proveri dozvoljena adresiranja sa instrukcijama, shr je jedino src, dst
 		if(addr1Mode == IMMED && mnemonic.opcode == MAPS::opCode["shr"]) {
-			logger("Illegal addressing for shr dst, src line number " + readingLineNumber);
-			exit(ERR_SYNTAX);
+			logger("Illegal addressing for shr dst, src line number ",readingLineNumber);
+			returnErrorCode(ERR_SYNTAX);
 		}
 		if(addr2Mode == IMMED && mnemonic.opcode != MAPS::opCode["shr"]) {
-			logger("Illegal addressing IMMED for dst operand at line number " + readingLineNumber);
-			exit(ERR_SYNTAX);
+			logger("Illegal addressing IMMED for dst operand at line number ",readingLineNumber);
+			returnErrorCode(ERR_SYNTAX);
 		}
 
 		if(isPcRel) {
