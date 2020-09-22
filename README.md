@@ -2,31 +2,49 @@
 Little endian
 ****
 usage: asm src.s -o obj.o
+
 compilation: g++ -o bin/asm src/*.cpp
 ****
 
 ****
 Supports the following
 ****
+
 _label1:
+
 .extern a,b,c
+
 .global d,e
+
 .equ symbolLiteral, d-e+0x1234-128
 
+
+
 .text [#comment]
+
 .section .bss
+
 [#comment]
+
 [label:].byte 0xff,-1 [#comment]
+
 [label:].word 0xffff,-1234,a,symbolLiteral
+
 *****
 Architecture details
 *****
+
 8 16bit registers r0-7
+
 pc = r7
+
 sp = r6
 
+
 Operations with one, two or no operand[s]
+
 Maximum 7 bytes long
+
 | InstrDescr | Op1Descr | Im/Di/Ad | Im/Di/Ad | Op2Descr | Im/Di/Ad | Im/Di/Ad |
 
 instruction coding
